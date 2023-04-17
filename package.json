@@ -1,0 +1,35 @@
+{
+  "name": "chatrunner",
+  "version": "0.0.1",
+  "description": "Simple CLI for running either a single LLM call or a multi-call session",
+  "main": "index.js",
+  "type": "module",
+  "repository": "https://github.com/noodlefrenzy/chatrunner",
+  "author": "Michael Lanzetta <milanz@microsoft.com>",
+  "license": "MIT",
+  "private": false,
+  "devDependencies": {
+    "@types/node": "^14.11.2",
+    "gts": "^3.1.1",
+    "typescript": "~4.7.0"
+  },
+  "scripts": {
+    "lint": "gts lint",
+    "clean": "gts clean",
+    "compile": "tsc",
+    "fix": "gts fix",
+    "prepare": "yarn.cmd run compile",
+    "pretest": "yarn.cmd run compile",
+    "posttest": "yarn.cmd run lint"
+  },
+  "dependencies": {
+    "commander": "^10.0.1",
+    "dotenv": "^16.0.3",
+    "langchain": "^0.0.56",
+    "openai": "^3.2.1",
+    "redis": "^4.6.5",
+    "typeorm": "^0.3.15",
+    "winston": "^3.8.2",
+    "word-wrap": "^1.2.3"
+  }
+}
