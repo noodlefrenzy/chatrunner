@@ -5,5 +5,9 @@ Running list of things I need to address in this codebase. Once it's in better s
 - [x] Basic call/response with a simple example for GPT
 - [ ] Better documentation
 - [ ] Prompts from files
-- [ ] Multi-turn conversation 
+  - [x] For multi-turn
+  - [ ] For single response
+- [ ] Error handling for API responses
+- [x] Multi-turn conversation 
+- [ ] Multi-turn should use chat w/ history
 
