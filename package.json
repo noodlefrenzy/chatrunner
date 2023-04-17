@@ -23,6 +23,8 @@
     "posttest": "yarn.cmd run lint"
   },
   "dependencies": {
+    "@huggingface/inference": "^1.8.0",
+    "cohere-ai": "^6.2.0",
     "commander": "^10.0.1",
     "dotenv": "^16.0.3",
     "langchain": "^0.0.56",

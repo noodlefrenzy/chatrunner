@@ -1,12 +1,8 @@
 import * as dotenv from 'dotenv';
-//import * as wrap from 'word-wrap';
 import {Command} from 'commander';
 import * as winston from 'winston';
 
-import {OpenAI} from 'langchain';
-//import {ConversationChain} from 'langchain/chains';
-//import {BaseLLM} from 'langchain/llms';
-//import {PromptTemplate} from 'langchain/prompts';
+import {OpenAI} from 'langchain/llms/openai';
 
 dotenv.config();
 
