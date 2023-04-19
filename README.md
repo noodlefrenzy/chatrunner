@@ -9,23 +9,26 @@ Typically prompts will be delivered from the command line for call/response, but
 ## Usage
 
 ```
+
 Usage: chatrunner [options] [command]
 
 CLI for invoking an LLM in either a single call or a back-and-forth session
 
 Options:
-  -V, --version   output the version number
-  -d, --debug     Enable debug logging
-  -h, --help      display help for command
+  -V, --version       output the version number
+  -d, --debug         Enable debug logging
+  -h, --help          display help for command
 
 Commands:
-  respond         Generate the given prompt
-  help [command]  display help for command
+  respond             Generate the given prompt
+  chat                Start an interactive chat session
+  selfchat [options]  Start a self chat session, where two bots talk to each
+                      other
+  help [command]      display help for command
 
 
 Examples:
   $ <something that generates a prompt> | chatrunner respond
-
 ```
 
 ```
@@ -35,4 +38,24 @@ Generate the given prompt
 
 Options:
   -h, --help  display help for command
+```
+
+```
+Usage: chatrunner chat [options]
+
+Start an interactive chat session
+
+Options:
+  -h, --help  display help for command
+```
+
+```
+Usage: chatrunner selfchat [options]
+
+Start a self chat session, where two bots talk to each other
+
+Options:
+  -f, --file <file>          File containing the prompts
+  -n, --num-rounds <number>  Number of rounds to run (default: "2")
+  -h, --help                 display help for command
 ```
