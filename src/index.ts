@@ -7,7 +7,13 @@ import * as readline from 'readline';
 
 import {OpenAI} from 'langchain/llms/openai';
 import { LLMResult } from 'langchain/schema';
+import { ChatOpenAI } from "langchain/chat_models/openai";
+import { AgentExecutor, Tool, initializeAgentExecutor } from "langchain/agents";
+import { SerpAPI } from "langchain/tools";
+import { Calculator } from "langchain/tools/calculator";
+import { BufferMemory } from "langchain/memory";
 
+process.env.LANGCHAIN_HANDLER = "langchain";
 dotenv.config();
 
 const logger = winston.createLogger({
@@ -23,11 +29,33 @@ const logger = winston.createLogger({
   ],
 });
 
-function getModel() {
+function getModel(temperature: number = 0.8) {
   return new OpenAI({
     modelName: 'gpt-3.5-turbo',
     openAIApiKey: process.env.OPENAI_API_KEY,
-    temperature: 0.8,
+    temperature: temperature,
+  });
+}
+
+function getAgent(temperature: number = 0.8): Promise<AgentExecutor> {
+  return new Promise(resolve => {
+    const model = new ChatOpenAI({ temperature: 0.8 });
+    const tools: Tool[] = [
+    ];
+
+    const executor = await initializeAgentExecutor(
+      tools,
+      model,
+      "chat-conversational-react-description",
+      true
+    );
+    executor.memory = new BufferMemory({
+      returnMessages: true,
+      memoryKey: "chat_history",
+      inputKey: "input",
+    });
+    console.log("Loaded agent.");
+    resolve(executor);
   });
 }
 
@@ -87,20 +115,20 @@ async function selfChat(bot1Name: string, bot1Prompt: string, bot1Kickstart: str
   bot2Name: string, bot2Prompt: string,
   numRounds: number = 2) : Promise<void> {
 
-    const bot1 = getModel();
-    const bot2 = getModel();
+    const bot1 = await getAgent();
+    const bot2 = await getAgent();
 
     logger.debug(`Prompting ${bot1Name} with ${bot1Prompt}\n===`);
-    let response = await bot1.generate([bot1Prompt]);
-    console.log(`${bot1Name} Setup>\n${textFromResponse(response)}\n===`);
+    let response = await bot1.call({input: bot1Prompt});
+    console.log(`${bot1Name} Setup>\n${response.output}\n===`);
 
     logger.debug(`Prompting ${bot2Name} with ${bot2Prompt}\n===`);
-    let response2 = await bot2.generate([bot2Prompt]);
-    console.log(`${bot2Name} Setup>\n${textFromResponse(response2)}\n===`);
+    let response2 = await bot2.call({input: bot2Prompt});
+    console.log(`${bot2Name} Setup>\n${response2.output}\n===`);
 
     logger.debug(`Kickstarting ${bot1Name} with ${bot1Kickstart}\n===`);
-    response = await bot1.generate([bot1Kickstart]);
-    console.log(`${bot1Name} Kickstart the Conversation>\n${textFromResponse(response)}\n===`);
+    response = await bot1.call({input: bot1Kickstart});
+    console.log(`${bot1Name} Kickstart the Conversation>\n${response.output}\n===`);
 
     let curRound = 0;
     let timeToQuit = () => {
@@ -108,11 +136,11 @@ async function selfChat(bot1Name: string, bot1Prompt: string, bot1Kickstart: str
     };
 
     while (!timeToQuit()) {
-      response2 = await bot2.generate([textFromResponse(response)]);
-      console.log(`${bot2Name}>\n${textFromResponse(response2)}\n===`);
+      response2 = await bot2.call({input: response.output});
+      console.log(`${bot2Name}>\n${response2.output}\n===`);
 
-      response = await bot1.generate([textFromResponse(response2)]);
-      console.log(`${bot1Name}>\n${textFromResponse(response)}\n===`);
+      response = await bot1.call({input: response2.output});
+      console.log(`${bot1Name}>\n${response.output}\n===`);
 
       logger.debug(`Ending round ${curRound} of ${numRounds}`);
       curRound += 1;
