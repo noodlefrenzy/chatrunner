@@ -1312,10 +1312,10 @@ kuler@^2.0.0:
   resolved "https://registry.yarnpkg.com/kuler/-/kuler-2.0.0.tgz#e2c570a3800388fb44407e851531c1d670b061b3"
   integrity sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==
 
-langchain@^0.0.56:
-  version "0.0.56"
-  resolved "https://registry.yarnpkg.com/langchain/-/langchain-0.0.56.tgz#acb2ff96b7e93fb42d3415b1aeb86ba439a11ced"
-  integrity sha512-5+UCYhKwg//fm2Gb32EpKQiuNlJqt2YdKIFyZRCEyqMSmTd1Cu4QcdRMjFfl7IVwyY3xrUC7dQIMsJ6k+TsRrA==
+langchain@^0.0.59:
+  version "0.0.59"
+  resolved "https://registry.yarnpkg.com/langchain/-/langchain-0.0.59.tgz#ac07180f2062a9e62e3707ec6ab4218ed61d179d"
+  integrity sha512-aggECWjvunoOnh2v5iCjaTp+CMsPW69xBFGqle8o5waMfpRd4v+YYASFqeihp0pDrwM8OtSKCJUhYCROMZ35lw==
   dependencies:
     "@anthropic-ai/sdk" "^0.4.3"
     "@dqbd/tiktoken" "^1.0.4"

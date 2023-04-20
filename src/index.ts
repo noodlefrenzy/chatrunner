@@ -1,19 +1,22 @@
 import * as dotenv from 'dotenv';
-import {Command} from 'commander';
+import { Command } from 'commander';
 import * as fs from 'fs';
-import {parse} from 'yaml';
+import { parse } from 'yaml';
 import * as winston from 'winston';
 import * as readline from 'readline';
 
-import {OpenAI} from 'langchain/llms/openai';
+import { OpenAI } from 'langchain/llms/openai';
 import { LLMResult } from 'langchain/schema';
-import { ChatOpenAI } from "langchain/chat_models/openai";
-import { AgentExecutor, Tool, initializeAgentExecutor } from "langchain/agents";
-import { SerpAPI } from "langchain/tools";
-import { Calculator } from "langchain/tools/calculator";
-import { BufferMemory } from "langchain/memory";
+import { ChatOpenAI } from 'langchain/chat_models/openai';
+import {
+  AgentExecutor,
+  initializeAgentExecutorWithOptions,
+} from "langchain/agents";
+import { Calculator } from 'langchain/tools/calculator';
+import { BaseMemory, BufferMemory, ConversationSummaryMemory } from 'langchain/memory';
+import { LLMChain } from 'langchain/chains';
+import { PromptTemplate } from 'langchain/prompts';
 
-process.env.LANGCHAIN_HANDLER = "langchain";
 dotenv.config();
 
 const logger = winston.createLogger({
@@ -29,7 +32,7 @@ const logger = winston.createLogger({
   ],
 });
 
-function getModel(temperature: number = 0.8) {
+function getModel(temperature = 0.8) {
   return new OpenAI({
     modelName: 'gpt-3.5-turbo',
     openAIApiKey: process.env.OPENAI_API_KEY,
@@ -37,26 +40,52 @@ function getModel(temperature: number = 0.8) {
   });
 }
 
-function getAgent(temperature: number = 0.8): Promise<AgentExecutor> {
-  return new Promise(resolve => {
-    const model = new ChatOpenAI({ temperature: 0.8 });
-    const tools: Tool[] = [
-    ];
-
-    const executor = await initializeAgentExecutor(
-      tools,
-      model,
-      "chat-conversational-react-description",
-      true
-    );
-    executor.memory = new BufferMemory({
-      returnMessages: true,
-      memoryKey: "chat_history",
-      inputKey: "input",
+function getLLMChain(temperature = 0.8, memoryType = 'buffer') {
+  let memory: BaseMemory;
+  if (memoryType === 'buffer') {
+    memory = new BufferMemory({
+      memoryKey: 'chat_history',
     });
-    console.log("Loaded agent.");
-    resolve(executor);
+  } else {
+    memory = new ConversationSummaryMemory({
+      memoryKey: 'chat_history',
+      llm: new ChatOpenAI({
+        modelName: "gpt-3.5-turbo",
+        openAIApiKey: process.env.OPENAI_API_KEY,
+        temperature: 0,
+      }),
+    });
+  }
+
+  const model = new ChatOpenAI({
+    modelName: "gpt-3.5-turbo",
+    openAIApiKey: process.env.OPENAI_API_KEY,
+    temperature: temperature,
   });
+  const prompt =
+    PromptTemplate.fromTemplate(`The following is a friendly conversation between a human and an AI. 
+    Current conversation:
+    {chat_history}
+    Human: {input}
+    AI:`);
+
+  return new LLMChain({ llm: model, prompt, memory });
+}
+
+async function getAgent(temperature = 0.8): Promise<AgentExecutor> {
+  const model = new ChatOpenAI({
+    modelName: "gpt-3.5-turbo",
+    openAIApiKey: process.env.OPENAI_API_KEY,
+    temperature: temperature,
+  });
+  const tools = [new Calculator()];
+
+  const executor = await initializeAgentExecutorWithOptions(tools, model, {
+    agentType: "chat-conversational-react-description",
+    verbose: true,
+  });
+  console.log('Loaded agent.');
+  return executor;
 }
 
 function getPromptFromInput(): Promise<string> {
@@ -64,7 +93,7 @@ function getPromptFromInput(): Promise<string> {
 
   let input = '';
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     process.stdin.on('data', (chunk: string) => {
       logger.debug(`Chunk: ${chunk}`);
       input += chunk;
@@ -78,8 +107,8 @@ function getPromptFromInput(): Promise<string> {
 }
 
 function readYaml(filename: string) {
-  const yamlString = fs.readFileSync(`${filename}.yaml`,'utf8');
-  return parse(yamlString);  
+  const yamlString = fs.readFileSync(`${filename}.yaml`, 'utf8');
+  return parse(yamlString);
 }
 
 function textFromResponse(response: LLMResult): string {
@@ -88,12 +117,12 @@ function textFromResponse(response: LLMResult): string {
 }
 
 async function interactiveChat(): Promise<void> {
-  const model = getModel();
+  const agent = await getLLMChain();
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
-  
+
   while (true) {
     const prompt = await new Promise<string>((resolve) => {
       rl.question('You (Q to quit)>\n', (input) => {
@@ -106,47 +135,144 @@ async function interactiveChat(): Promise<void> {
       return;
     }
 
-    const response = await model.generate([prompt]);
-    console.log(`Bot>\n${textFromResponse(response)}`);
+    const response = await agent.call({ input: prompt });
+    console.log(`Bot>\n${response.text}\n===`);
   }
 }
 
-async function selfChat(bot1Name: string, bot1Prompt: string, bot1Kickstart: string, 
-  bot2Name: string, bot2Prompt: string,
-  numRounds: number = 2) : Promise<void> {
+// NOTE: Currently investigating agents failure to remember
+// across call invocations
+async function selfChatWithAgent(convoSpec: any): Promise<void> {
+  const bots = new Map<string, any>();
+  for (let i = 0; i < convoSpec.actors.length; i++) {
+    const actor = convoSpec.actors[i];
+    bots.set(actor.name, {
+      agent: await getAgent(),
+      spec: actor,
+    });
+  }
 
-    const bot1 = await getAgent();
-    const bot2 = await getAgent();
-
-    logger.debug(`Prompting ${bot1Name} with ${bot1Prompt}\n===`);
-    let response = await bot1.call({input: bot1Prompt});
-    console.log(`${bot1Name} Setup>\n${response.output}\n===`);
-
-    logger.debug(`Prompting ${bot2Name} with ${bot2Prompt}\n===`);
-    let response2 = await bot2.call({input: bot2Prompt});
-    console.log(`${bot2Name} Setup>\n${response2.output}\n===`);
-
-    logger.debug(`Kickstarting ${bot1Name} with ${bot1Kickstart}\n===`);
-    response = await bot1.call({input: bot1Kickstart});
-    console.log(`${bot1Name} Kickstart the Conversation>\n${response.output}\n===`);
-
-    let curRound = 0;
-    let timeToQuit = () => {
-      return (curRound > numRounds);
-    };
-
-    while (!timeToQuit()) {
-      response2 = await bot2.call({input: response.output});
-      console.log(`${bot2Name}>\n${response2.output}\n===`);
-
-      response = await bot1.call({input: response2.output});
-      console.log(`${bot1Name}>\n${response.output}\n===`);
-
-      logger.debug(`Ending round ${curRound} of ${numRounds}`);
-      curRound += 1;
+  for (let i = 0; i < convoSpec.conversation.length; i += 1) {
+    const curPhase = convoSpec.conversation[i];
+    logger.debug(`Phase ${i}: ${JSON.stringify(curPhase)}`);
+    console.log(`Phase ${i}: ${curPhase.name}\n===`);
+    for (let i = 0; i < curPhase.actors.length; i += 1) {
+      const actor = curPhase.actors[i];
+      const bot = bots.get(actor);
+      const priming = await bot.agent.call({ input: bot.spec.prompt });
+      bot["lastResponse"] = priming.output;
+      console.log(`priming ${actor}>\n${bot.spec.prompt}\n===`);
+      console.log(`${actor} Setup>\n${priming.output}\n===`);
     }
 
-    return Promise.resolve();
+    if (curPhase.kickstart) {
+      const actor1 = curPhase.actors[0];
+      const bot1 = bots.get(actor1);
+      let kickstartMessage = curPhase.kickstart;
+      if (curPhase.kickstart.endsWith('.lastResponse')) {
+        const kickstartActor = curPhase.kickstart.split('.')[0];
+        logger.debug(`Kickstarting with ${kickstartActor}'s last response`);
+        kickstartMessage = bots.get(kickstartActor).lastResponse;
+      }
+      const kickstart = await bot1.agent.call({ input: kickstartMessage });
+      bot1["lastResponse"] = kickstart.output;
+      console.log(`kickstarting ${actor1}>\n${kickstartMessage}\n===`);
+      console.log(`${actor1} Kickstart>\n${kickstart.output}\n===`);
+    }
+
+    const stopPhrase = curPhase.ends.stopPhrase;
+    for (let j = 0; j < curPhase.ends.numRounds; j += 1) {
+      for (let k = 0; k < curPhase.actors.length; k += 1) {
+        const prevActor = curPhase.actors[k];
+        const prevBot = bots.get(prevActor);
+        const curActor = curPhase.actors[k + (1 % curPhase.actors.length)];
+        const curBot = bots.get(curActor);
+        if (prevBot && curBot) {
+          console.log(
+            `\nSending ${prevActor}s last response to ${curActor}>\n${prevBot.lastResponse}\n===`
+          );
+          const response = await curBot.agent.call({
+            input: prevBot.lastResponse,
+          });
+          curBot["lastResponse"] = response.output;
+          console.log(`${curActor}>\n${response.output}\n===`);
+          if (response.output.includes(stopPhrase)) {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return Promise.resolve();
+}
+
+async function selfChatWithChain(convoSpec: any): Promise<void> {
+  const bots = new Map<string, any>();
+  for (let i = 0; i < convoSpec.actors.length; i++) {
+    const actor = convoSpec.actors[i];
+    bots.set(actor.name, {
+      agent: await getLLMChain(),
+      spec: actor,
+    });
+  }
+
+  for (let i = 0; i < convoSpec.conversation.length; i += 1) {
+    const curPhase = convoSpec.conversation[i];
+    logger.debug(`Phase ${i}: ${JSON.stringify(curPhase)}`);
+    console.log(`Phase ${i}: ${curPhase.name}\n===`);
+    for (let i = 0; i < curPhase.actors.length; i += 1) {
+      const actor = curPhase.actors[i];
+      const bot = bots.get(actor);
+      const priming = await bot.agent.call({ input: bot.spec.prompt });
+      bot["lastResponse"] = priming.text;
+      console.log(`priming ${actor}>\n${bot.spec.prompt}\n===`);
+      console.log(`${actor} Setup>\n${priming.text}\n===`);
+    }
+
+    if (curPhase.kickstart) {
+      const actor1 = curPhase.actors[0];
+      const bot1 = bots.get(actor1);
+      let kickstartMessage = curPhase.kickstart;
+      if (curPhase.kickstart.endsWith('.lastResponse')) {
+        const kickstartActor = curPhase.kickstart.split('.')[0];
+        logger.debug(`Kickstarting with ${kickstartActor}'s last response`);
+        kickstartMessage = bots.get(kickstartActor).lastResponse;
+      }
+      const kickstart = await bot1.agent.call({ input: kickstartMessage });
+      bot1["lastResponse"] = kickstart.text;
+      console.log(`kickstarting ${actor1}>\n${kickstartMessage}\n===`);
+      console.log(`${actor1} Kickstart>\n${kickstart.text}\n===`);
+    }
+
+    const stopPhrase = curPhase.ends.stopPhrase;
+    phraseLoop: for (let j = 0; j < curPhase.ends.numRounds; j += 1) {
+      for (let k = 0; k < curPhase.actors.length; k += 1) {
+        const prevActor = curPhase.actors[k];
+        const prevBot = bots.get(prevActor);
+        const curActor = curPhase.actors[k + (1 % curPhase.actors.length)];
+        const curBot = bots.get(curActor);
+        if (prevBot && curBot) {
+          console.log(
+            `\nSending ${prevActor}s last response to ${curActor}>\n${prevBot.lastResponse}\n===`
+          );
+          const response = await curBot.agent.call({
+            input: prevBot.lastResponse,
+          });
+          curBot["lastResponse"] = response.text;
+          console.log(`${curActor}>\n${response.text}\n===`);
+          if (response.text.includes(stopPhrase)) {
+            logger.debug(`Breaking out of phrase loop, found stop phrase`);
+            break phraseLoop;
+          } else {
+            logger.debug(`Response\n${response.text}\n=== does not include stop phrase ${stopPhrase}`);
+          }
+        }
+      }
+    }
+  }
+
+  return Promise.resolve();
 }
 
 const program = new Command();
@@ -195,9 +321,9 @@ program
     }
     logger.debug(`program opts: ${JSON.stringify(program.opts())}`);
     logger.debug(`options: ${JSON.stringify(options)}`);
-    const bots = readYaml(options.file);
-    await selfChat(bots.bot1.name, bots.bot1.prompt, bots.bot1.kickstart, 
-      bots.bot2.name, bots.bot2.prompt, parseInt(options.numRounds));
+    const conversation = readYaml(options.file);
+    logger.debug(`conversation: ${JSON.stringify(conversation, null, 2)}`);
+    await selfChatWithChain(conversation);
   });
 
 program.addHelpText(
